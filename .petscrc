@@ -1,0 +1,5 @@
+-petsclimiter_type minmod
+-petscfv_type leastsquares 
+-dm_plex_gmsh_use_regions
+-dm_plex_print_fvm
+-dm_view
