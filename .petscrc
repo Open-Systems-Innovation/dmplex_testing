@@ -1,5 +1,15 @@
--petsclimiter_type minmod
+-ts_ssp_type rks3  # rks2,rk104
+#-ts_ssp_nstages 5 
+-petsclimiter_type minmod 
 -petscfv_type leastsquares 
 -dm_plex_gmsh_use_regions
--dm_plex_print_fvm
--dm_view
+#-dm_plex_view_lables
+#-dm_view :mesh.tex:ascii_latex
+#-dm_plex_print_fvm
+#-dm_view
+-dm_distribute # flag to distribute mesh among processes
+-petscpartitioner_type ptscotch
+-dm_distribute_overlap 0
+-dm_plex_check_geometry
+-dm_partition_view
+#-dm_view hdf5:mesh.h5

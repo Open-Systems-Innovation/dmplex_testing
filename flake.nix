@@ -21,19 +21,19 @@
             packages = [
             # General packages
                pkgs.petsc
-               pkgs.mpich
-               pkgs.hdf5
+               pkgs.mpi
+              # pkgs.hdf5
               # pkgs.clangd
               #  # Python packages
               (pkgs.python3.withPackages (python-pkgs: [
               #  # packages for formatting/ IDE
               #  python-pkgs.pip
-                python-pkgs.python-lsp-server
+              #  python-pkgs.python-lsp-server
               #  # packages for code
                 python-pkgs.gmsh
               #  python-pkgs.matplotlib
               #  python-pkgs.meshio
-                python-pkgs.numpy
+              #  python-pkgs.numpy
               #  python-pkgs.firedrake
               ]))
             ];
@@ -44,7 +44,7 @@
               if [ ! -f "TAGS" ]; then
                   find $PETSC_DIR/src -name '*.c' | etags -
               fi
-              export VIRTUAL_ENV="DM Testing Environment"
+              export VIRTUAL_ENV="Custom PETSc Environment"
             '';
           };
         };
