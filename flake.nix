@@ -22,6 +22,7 @@
             # General packages
                pkgs.petsc
                pkgs.mpi
+               pkgs.hdf5-mpi
               # pkgs.hdf5
               # pkgs.clangd
               #  # Python packages
@@ -31,7 +32,8 @@
               #  python-pkgs.python-lsp-server
               #  # packages for code
                 python-pkgs.gmsh
-              #  python-pkgs.matplotlib
+                python-pkgs.h5py
+                python-pkgs.matplotlib
               #  python-pkgs.meshio
               #  python-pkgs.numpy
               #  python-pkgs.firedrake
