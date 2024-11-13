@@ -494,9 +494,9 @@ static PetscErrorCode LeftBoundary(PetscReal time, const PetscReal *c, const Pet
   xG[5] =  phys->silicone_lambda; 
   xG[6] =  phys->silicone_mu;
   xG[7] =  phys->silicone_density;
-  //if (time < 0.025) {
-  //  xG[3] =  PetscSignReal((0.1 * PETSC_PI * time)/0.025); 
-  //}
+//  if (time < 0.025) {
+//    xG[0] =  PetscSignReal((0.1 * PETSC_PI * time)/0.025); 
+// }
 
 //  PetscPrintf(PETSC_COMM_WORLD, "time= %f, c = (%f, %f), n = (%f, %f) \n  xG = (%f, %f, %f, %f, %f, %f, %f, %f)\n", time, c[0], c[1], n[0], n[1], xG[0], xG[1], xG[2], xG[3], xG[4], xG[5], xG[6], xG[7]);
   PetscFunctionReturn(PETSC_SUCCESS);
@@ -581,8 +581,8 @@ static PetscErrorCode blobMaterial (PetscInt dim, PetscReal time, const PetscRea
 static PetscErrorCode siliconeMaterial (PetscInt dim, PetscReal time, const PetscReal x[], PetscInt Nc, PetscScalar *u, void *ctx)
 {
   Physics         phys   = (Physics)ctx;
-
   PetscFunctionBeginUser;
+
   u[0] = 0;
   u[1] = 0;
   u[2] = 0;
@@ -598,10 +598,10 @@ static PetscErrorCode recieverMaterial (PetscInt dim, PetscReal time, const Pets
   Physics         phys   = (Physics)ctx;
 
   PetscFunctionBeginUser;
-  u[0] = 1;
+  u[0] = 0;
   u[1] = 0;
   u[2] = 0;
-  u[3] = 0;
+  u[3] = 1;
   u[4] = 0;
   u[5] = phys->silicone_lambda;
   u[6] = phys->silicone_mu;
@@ -609,57 +609,131 @@ static PetscErrorCode recieverMaterial (PetscInt dim, PetscReal time, const Pets
   PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-PetscErrorCode SetUpMaterialProperties(DM dm, Vec X, Physics phys)
+PetscErrorCode SetUpMaterialProperties(DM dm, Vec X, User user)
 {
-  DMLabel label;
-  PetscInt materialid; 
-
-  // declare an array of function pointers called func
-  // one function per field
-  // we have to do it like this becaues DMProjectFunction expects an
-  // array of function pointers because C is like that
-  PetscErrorCode (*func[1])(PetscInt dim, PetscReal time, const PetscReal x[],
-                            PetscInt Nf, PetscScalar *u, void *ctx);
-  // now func[0] is a pointer to a function
-  void *ctx[1];  // array of pointers for DMProjectFunctionLabel
-  ctx[0] = phys;
+  DM                 plex, dmCell;
+  //Model              mod = user->model;
+  Vec                cellgeom;
+  const PetscScalar *cgeom;
+  PetscScalar       *x;
+  PetscInt           cStart, cEnd, c;
+  DMLabel            siliconeLabel, outerLayerLabel, recieverLabel;
 
   PetscFunctionBeginUser;
+  PetscCall(DMConvert(dm, DMPLEX, &plex));
+  PetscCall(DMPlexGetGeometryFVM(plex, NULL, &cellgeom, NULL));
+  PetscCall(VecGetDM(cellgeom, &dmCell));
+  PetscCall(DMPlexGetSimplexOrBoxCells(dm, 0, &cStart, &cEnd));
+  PetscCall(VecGetArrayRead(cellgeom, &cgeom));
+  PetscCall(VecGetArray(X, &x));
 
-  // blob material
-//  materialid = 6;
-//  func[0] = blobMaterial;
-//  ctx[0] = (void *)phys;
-//  PetscCall(DMGetLabel(dm, "blob", &label));
-//  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
+  // Get the labels for each material
+  PetscCall(DMGetLabel(plex, "silicone", &siliconeLabel));
+  PetscCall(DMGetLabel(plex, "outer_layer", &outerLayerLabel));
+  PetscCall(DMGetLabel(plex, "reciever", &recieverLabel));
 
-  // silicone material
-  materialid = 9;
-  func[0] = siliconeMaterial;
-  PetscCall(DMGetLabel(dm, "silicone", &label));
-  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
+  for (c = cStart; c < cEnd; ++c) {
+    const PetscFVCellGeom *cg;
+    PetscScalar           *xc;
+    PetscInt               siliconeValue, outerLayerValue, recieverValue;
 
-  materialid = 10;
-  func[0] = siliconeMaterial;
-  PetscCall(DMGetLabel(dm, "outer_layer", &label));
-  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
-  
-  materialid = 11;
-  func[0] = recieverMaterial;
-  PetscCall(DMGetLabel(dm, "reciever", &label));
-  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
+    // Read the geometry data for the current cell
+    PetscCall(DMPlexPointLocalRead(dmCell, c, cgeom, &cg));
+    PetscCall(DMPlexPointGlobalRef(dm, c, x, &xc));
+    if (!xc) continue; // Skip if the cell is not owned
 
+    // Check the material label for the current cell
+//    PetscCall(DMGetLabelValue(siliconeLabel, c, &siliconeValue));
+    PetscCall(DMGetLabelValue(dm, "silicone", c, &siliconeValue));
+    PetscCall(DMGetLabelValue(dm, "outer_layer", c, &outerLayerValue));
+    PetscCall(DMGetLabelValue(dm, "reciever", c, &recieverValue));
 
+   // PetscPrintf(PETSC_COMM_WORLD, "Xc = %f, %f, %f, %f\n", xc[0], xc[1], xc[2], xc[3]);
+ //   // Set initial condition based on the material type
 
-  // boundary
- // materialid = 1;
- // PetscCall(DMGetLabel(dm, "Face Sets", &label));
- // DMLabelView(label, PETSC_VIEWER_STDOUT_WORLD);
- // PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
- // PetscCall(VecViewFromOptions(X, NULL, "-X_view"));
+      xc[0] = 0.0;
+      xc[1] = 0.0;
+      xc[2] = 0.0;
+      xc[3] = 0.0;
+    if (siliconeValue == 9) {
+ //     PetscCall(siliconeMaterial(dim, 0.0, cg->centroid, xc, mod->solutionctx));
+      xc[5] = 2;
+      xc[6] = 1;
+      xc[7] = 1;
+    } else if (outerLayerValue == 10) {
+      xc[5] = 2;
+      xc[6] = 1;
+      xc[7] = 1;
+    } else if (recieverValue == 11) {
+      xc[0] = 1;
+      xc[5] = 2;
+      xc[6] = 1;
+      xc[7] = 1;
+    } else {
+      xc[5] = 2;
+      xc[6] = 1;
+      xc[7] = 1;
+    }
+  }
 
+  PetscCall(VecRestoreArrayRead(cellgeom, &cgeom));
+  PetscCall(VecRestoreArray(X, &x));
+  PetscCall(DMDestroy(&plex));
   PetscFunctionReturn(PETSC_SUCCESS);
 }
+
+
+//PetscErrorCode SetUpMaterialProperties(DM dm, Vec X, Physics phys)
+//{
+//  DMLabel label;
+//  PetscInt materialid; 
+//
+//  // declare an array of function pointers called func
+//  // one function per field
+//  // we have to do it like this becaues DMProjectFunction expects an
+//  // array of function pointers because C is like that
+//  PetscErrorCode (*func[1])(PetscInt dim, PetscReal time, const PetscReal x[],
+//                            PetscInt Nf, PetscScalar *u, void *ctx);
+//  // now func[0] is a pointer to a function
+//  void *ctx[1];  // array of pointers for DMProjectFunctionLabel
+//  ctx[0] = phys;
+//
+//  PetscFunctionBeginUser;
+//
+//  // blob material
+////  materialid = 6;
+////  func[0] = blobMaterial;
+////  ctx[0] = (void *)phys;
+////  PetscCall(DMGetLabel(dm, "blob", &label));
+////  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
+//
+//  // silicone material
+//  materialid = 9;
+//  func[0] = siliconeMaterial;
+//  PetscCall(DMGetLabel(dm, "silicone", &label));
+//  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, INSERT_VALUES, X));
+//
+//  materialid = 10;
+//  func[0] = siliconeMaterial;
+//  PetscCall(DMGetLabel(dm, "outer_layer", &label));
+//  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, INSERT_VALUES, X));
+//  
+//  materialid = 11;
+//  func[0] = recieverMaterial;
+//  PetscCall(DMGetLabel(dm, "reciever", &label));
+//  PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, INSERT_VALUES, X));
+//
+//
+//
+//  // boundary
+// // materialid = 1;
+// // PetscCall(DMGetLabel(dm, "Face Sets", &label));
+// // DMLabelView(label, PETSC_VIEWER_STDOUT_WORLD);
+// // PetscCall(DMProjectFunctionLabel(dm, 0.0, label, 1, &materialid, 0, NULL, func, ctx, ADD_VALUES, X));
+// // PetscCall(VecViewFromOptions(X, NULL, "-X_view"));
+//
+//  PetscFunctionReturn(PETSC_SUCCESS);
+//}
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
    Initial Conditions 
@@ -710,7 +784,7 @@ static PetscErrorCode MonitorVTK(TS ts, PetscInt stepnum, PetscReal time, Vec X,
   // Check for rollback
   PetscCall(TSGetStepRollBack(ts, &rollback));
   if (rollback)
-    PetscFunctionReturn(PETSC_SUCCESS);
+   PetscFunctionReturn(PETSC_SUCCESS);
 
   // Get the current solution
   PetscCall(PetscObjectSetName((PetscObject)X, "u"));
@@ -922,12 +996,12 @@ int main(int argc, char **argv)
 //PetscCall(MPIU_Allreduce(&phys->maxspeed, &mod->maxspeed, 1, MPIU_REAL, MPIU_MAX, PetscObjectComm((PetscObject)ts)));
 
   // CFL condition for time stepping
-  cfl = 0.9*4;
+  //cfl = 0.9*4;
   PetscCall(DMPlexGetGeometryFVM(dm, NULL, NULL, &minRadius));
   PetscReal silicone_speed = PetscSqrtReal((phys->silicone_lambda + 2.0 * phys->silicone_mu) / phys->silicone_density);
   PetscReal blob_speed = PetscSqrtReal((phys->blob_lambda + 2.0 * phys->blob_mu) / phys->blob_density);
   maxspeed = (silicone_speed > blob_speed) ? silicone_speed : blob_speed;
-  dt = cfl*(minRadius / maxspeed)/2;
+  dt = (minRadius / maxspeed)/5;
   PetscPrintf(comm, "dt = %f\n", dt);
   PetscPrintf(comm, "maxspeed = %f\n", maxspeed);
   PetscPrintf(comm, "minRadius = %f\n", minRadius);
